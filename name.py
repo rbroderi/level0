@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from functools import total_ordering
 import math
 from typing import (
+    Any,
     DefaultDict,
     Dict,
     List,
@@ -19,6 +20,9 @@ from collections import defaultdict
 import random
 from namegen.namechoose import generate, nat_lookup, MASCULINE, FEMININE
 import operator
+
+TOWN_ALIGNMENT_MOD = 2
+TOWN_LAWFULLNESS_MOD = 1
 
 
 @total_ordering
@@ -131,10 +135,10 @@ class NeedFactory:
 
 
 class WEIGHTS:
-    NORMAL_1_10 = ((1, 10), (1, 2, 2.62, 4.24, 6.85, 6.85, 4.24, 2.62, 2, 1))
-    NORMAL_3_18 = (
-        (3, 18),
-        (
+    types: Dict[Tuple[int, int], Tuple[float, ...]] = {
+        (0, 10): (1, 2, 2.62, 4.24, 6.85, 11.09, 6.85, 4.24, 2.62, 2, 1),
+        (1, 10): (1, 2, 2.62, 4.24, 6.85, 6.85, 4.24, 2.62, 2, 1),
+        (3, 18): (
             0.46,
             1.39,
             2.78,
@@ -152,7 +156,7 @@ class WEIGHTS:
             1.39,
             0.46,
         ),
-    )
+    }
 
 
 def compress_range(num: int):
@@ -170,6 +174,7 @@ class Person:
         CHARISMA = auto()
         PREDICTABILITY = auto()
         LAWFULLNESS = auto()
+        MORALITY = auto()
 
         def __str__(self):
             return self.name
@@ -179,10 +184,25 @@ class Person:
 
     @staticmethod
     def __gen_stat_dict() -> Dict[Person.STAT_TYPES, int]:
+
+        # stat, range[int,int], chance to compress?
+        __stat_stats = {
+            Person.STAT_TYPES.STRENGTH: ((3, 18), True),
+            Person.STAT_TYPES.DEXTERITY: ((3, 18), True),
+            Person.STAT_TYPES.CONSTITUTION: ((3, 18), True),
+            Person.STAT_TYPES.INTELLIGENCE: ((3, 18), True),
+            Person.STAT_TYPES.WISDOM: ((3, 18), True),
+            Person.STAT_TYPES.CHARISMA: ((3, 18), True),
+            Person.STAT_TYPES.PREDICTABILITY: ((0, 10), True),
+            Person.STAT_TYPES.LAWFULLNESS: ((3, 18), False),
+            Person.STAT_TYPES.MORALITY: ((3, 18), False),
+        }
+
         ret: Dict[Person.STAT_TYPES, int] = dict()
         stat: Person.STAT_TYPES
         for stat in Person.STAT_TYPES:
-            _range, _weights = WEIGHTS.NORMAL_3_18
+            _range = (__stat_stats[stat][0][0], __stat_stats[stat][0][1])
+            _weights = WEIGHTS.types[_range]
             ret[stat] = random.choices(
                 range(_range[0], _range[1] + 1),
                 weights=_weights,
@@ -190,8 +210,7 @@ class Person:
             )[0]
             # reduce odds of those significantly outside of normal range 6-14
             if (
-                stat != Person.STAT_TYPES.PREDICTABILITY
-                or Person.STAT_TYPES.LAWFULLNESS
+                __stat_stats[stat][1]
                 and random.randint(
                     0, 4 * len(Person.STAT_TYPES.__members__) - 2
                 )
@@ -209,19 +228,21 @@ class Person:
         # 3-8
         # 8-13
         # 13-18
-        pred_stat = self.stats[Person.STAT_TYPES.PREDICTABILITY]
         law_stat = self.stats[Person.STAT_TYPES.LAWFULLNESS]
+        law_stat += TOWN_LAWFULLNESS_MOD
+        moral_stat = self.stats[Person.STAT_TYPES.MORALITY]
+        moral_stat += TOWN_ALIGNMENT_MOD
         pred = ""
         law = ""
-        if pred_stat >= 13:
+        if law_stat >= 13:
             pred = "NEUTRAL"
-        elif pred_stat >= 8:
+        elif law_stat >= 8:
             pred = "LAWFUL"
         else:
             pred = "CHAOTIC"
-        if law_stat >= 13:
+        if moral_stat >= 13:
             law = "GOOD"
-        elif law_stat >= 8:
+        elif moral_stat >= 8:
             law = "NEUTRAL"
         else:
             law = "EVIL"
@@ -279,7 +300,7 @@ for _ in range(1, 100):
         name_parts = name
 
     pair: List[Tuple[str, ...]] = list()
-    for i, _ in enumerate(name_parts):  # type ignore
+    for i, _ in enumerate(name_parts):
         pair.append((parts[i], str(i)))
 
     pair = sorted(pair, key=operator.itemgetter(0))
@@ -291,11 +312,16 @@ for _ in range(1, 100):
             Maslow_Need.TYPES.PHYSIOLOGICAL, subtype="Food"
         )
     )
-    p.demands[Maslow_Need.TYPES.PHYSIOLOGICAL].append(
-        needFactory.create_need(
-            Maslow_Need.TYPES.PHYSIOLOGICAL, subtype="Drink"
-        )
-    )
     people.append(p)
 people.sort(key=lambda h: (h.name))
 print(*people, sep="\n")
+
+# import csv
+
+# with open("GFG", "w", newline='') as f:
+
+#     # using csv.writer method from CSV package
+#     write = csv.writer(f)
+
+#     # write.writerow(fields)
+#     write.writerows(enumerate(people))
